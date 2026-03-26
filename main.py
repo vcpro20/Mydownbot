@@ -3,7 +3,14 @@ import yt_dlp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
 
+# --- إضافة هذه الأسطر الجديدة هنا ---
+import static_ffmpeg
+static_ffmpeg.add_paths() 
+# ----------------------------------
+
 TOKEN = os.getenv("BOT_TOKEN")
+
+# باقي الكود كما هو...
 
 # إعدادات yt-dlp مع تحديد مسار التحميل
 def get_ydl_opts(mode):
