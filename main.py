@@ -1,77 +1,63 @@
 import os
-import asyncio
+import yt_dlp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
-import yt_dlp
 
-# جلب التوكن من المتغيرات
+# الحصول على التوكن
 TOKEN = os.getenv("BOT_TOKEN")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 أهلاً بك! أرسل لي رابطاً من (يوتيوب، تيك توك، إنستغرام) للبدء.")
+    await update.message.reply_text("🚀 أرسل رابط الفيديو الآن (TikTok, YT, Instagram)")
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
     if "http" in url:
-        keyboard = [
-            [InlineKeyboardButton("🎬 فيديو (Video)", callback_data=f"vid|{url}")],
-            [InlineKeyboardButton("🎵 صوت (MP3)", callback_data=f"aud|{url}")]
+        btns = [
+            [InlineKeyboardButton("🎬 فيديو MP4", callback_data=f"v|{url}")],
+            [InlineKeyboardButton("🎵 صوت MP3", callback_data=f"a|{url}")]
         ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("اختر الصيغة المطلوبة:", reply_markup=reply_markup)
+        await update.message.reply_text("📥 اختر الصيغة:", reply_markup=InlineKeyboardMarkup(btns))
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def process(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    data, url = query.data.split("|")
+    mode, url = query.data.split("|")
     
-    msg = await query.edit_message_text("⏳ جاري المعالجة... قد يستغرق الأمر ثواني.")
+    status = await query.edit_message_text("⏳ جاري التحميل...")
 
     ydl_opts = {
-        'format': 'best' if data == "vid" else 'bestaudio/best',
-        'outtmpl': 'downloaded_file.%(ext)s',
-        'noplaylist': True,
+        'format': 'best' if mode == 'v' else 'bestaudio/best',
+        'outtmpl': 'file.%(ext)s',
     }
-
-    if data == "aud":
-        ydl_opts.update({
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-        })
+    
+    if mode == 'a':
+        ydl_opts['postprocessors'] = [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }]
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-            if data == "aud":
-                filename = filename.rsplit('.', 1)[0] + ".mp3"
+            path = ydl.prepare_filename(info)
+            if mode == 'a': path = path.rsplit('.', 1)[0] + ".mp3"
 
-        with open(filename, 'rb') as f:
-            if data == "vid":
-                await context.bot.send_video(chat_id=update.effective_chat.id, video=f, caption="✅ تم تحميل الفيديو بنجاح.")
+        with open(path, 'rb') as f:
+            if mode == 'v':
+                await context.bot.send_video(chat_id=query.message.chat_id, video=f)
             else:
-                await context.bot.send_audio(chat_id=update.effective_chat.id, audio=f, caption="✅ تم تحميل الصوت بنجاح.")
+                await context.bot.send_audio(chat_id=query.message.chat_id, audio=f)
         
-        os.remove(filename)
-        await msg.delete()
-
+        if os.path.exists(path): os.remove(path)
+        await status.delete()
     except Exception as e:
-        await query.message.reply_text(f"⚠️ خطأ تقني: تأكد من أن الرابط مدعوم أو حاول لاحقاً.\nوصف الخطأ: {str(e)}")
-
-def main():
-    if not TOKEN:
-        print("❌ Error: BOT_TOKEN not found!")
-        return
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    print("🚀 البوت يعمل الآن...")
-    app.run_polling()
+        await query.message.reply_text(f"❌ خطأ: {str(e)}")
 
 if __name__ == '__main__':
-    main()
-    
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_msg))
+    app.add_handler(CallbackQueryHandler(process))
+    print("Bot is running...")
+    app.run_polling()
