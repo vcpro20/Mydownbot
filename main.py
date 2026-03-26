@@ -82,9 +82,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if path and os.path.exists(path):
             with open(path, 'rb') as f:
                 if mode == 'v':
-                    await context.bot.send_video(chat_id=query.message.chat_id, video=f, caption="✅ تم التحميل بنجاح | @Allawi")
+                    await context.bot.send_video(chat_id=query.message.chat_id, video=f, caption="✅ تم التحميل بنجاح | @vcpro20")
                 else:
-                    await context.bot.send_audio(chat_id=query.message.chat_id, audio=f, caption="✅ تم تحويل الصوت بنجاح | @Allawi")
+                    await context.bot.send_audio(chat_id=query.message.chat_id, audio=f, caption="✅ تم تحويل الصوت بنجاح | @vcpro20")
             
             os.remove(path) # مسح الملف بعد الإرسال لتوفير مساحة السيرفر
             await status_msg.delete()
