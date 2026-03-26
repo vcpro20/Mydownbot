@@ -18,6 +18,15 @@ def get_ydl_opts(mode):
         'format': 'best' if mode == 'v' else 'bestaudio/best',
         'outtmpl': 'file.%(ext)s',
         'prefer_ffmpeg': True,
+        # الإعدادات الجديدة لتجاوز حظر إنستغرام وفيس بوك
+        'quiet': True,
+        'no_warnings': True,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'add_header': [
+            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language: en-us,en;q=0.5',
+        ],
+        'extract_flat': False,
     }
     if mode == 'a':
         opts['postprocessors'] = [{
@@ -26,6 +35,7 @@ def get_ydl_opts(mode):
             'preferredquality': '192',
         }]
     return opts
+    
 
 async def start(update, context):
     await update.message.reply_text("👋 أهلاً علاوي! أرسل رابط الفيديو للتحميل.")
