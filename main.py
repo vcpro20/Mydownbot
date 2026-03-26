@@ -59,7 +59,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
     conn.commit()
     conn.close()
-    await update.message.reply_text("🫡 أهلاً علاوي! تم إصلاح التوكن ونظام الصوت.\nأرسل رابط فيسبوك أو إنستا للبدء.")
+    await update.message.reply_text("🫡 أهلاً بك في البوت المتطور ! تم إصلاح التوكن ونظام الصوت.\nأرسل رابط فيسبوك أو إنستا للبدء.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
