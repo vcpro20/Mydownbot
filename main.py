@@ -1,99 +1,54 @@
-import os
-import yt_dlp
-import asyncio
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+import os, glob, yt_dlp, asyncio
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
 
-# جلب التوكن من إعدادات السيرفر (لأمان أكثر)
-TOKEN = os.getenv("8336468616:AAGcoSiyD1coEDRkDt1RPS77g_TwaMzd8bU")
+TOKEN = "8336468616:AAGcoSiyD1coEDRkDt1RPS77g_TwaMzd8bU"
+# تم تثبيت المجلد ليكون متوافقاً مع سيرفرات Render
+DOWNLOAD_DIR = "/tmp/downloads"
 
-# إعدادات التحميل باستخدام yt-dlp
 def download_media(url, mode='video'):
-    ydl_opts = {
-        'format': 'bestvideo+bestaudio/best' if mode == 'video' else 'bestaudio/best',
-        'outtmpl': 'downloads/%(title)s.%(ext)s',
-        'quiet': True,
-        'no_warnings': True,
-    }
+    if not os.path.exists(DOWNLOAD_DIR): os.makedirs(DOWNLOAD_DIR)
+    for f in glob.glob(f"{DOWNLOAD_DIR}/*"): os.remove(f)
     
+    ydl_opts = {
+        'quiet': True, 'no_warnings': True, 'nocheckcertificate': True,
+        'outtmpl': f'{DOWNLOAD_DIR}/allawi_file.%(ext)s',
+        'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36'}
+    }
     if mode == 'audio':
-        ydl_opts['postprocessors'] = [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }]
+        ydl_opts['format'] = 'bestaudio/best'
+        ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3','preferredquality': '192'}]
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        filename = ydl.prepare_filename(info)
-        if mode == 'audio':
-            filename = os.path.splitext(filename)[0] + ".mp3"
-        return filename
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "👋 أهلاً بك في بوت التحميل الذكي!\n\n"
-        "أرسل لي رابطاً من (يوتيوب، فيسبوك، تيك توك، إنستغرام) وسأقوم بتحميله لك."
-    )
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text
-    if not url.startswith("http"):
-        await update.message.reply_text("❌ عذراً، هذا ليس رابطاً صحيحاً.")
-        return
-
-    keyboard = [
-        [
-            InlineKeyboardButton("🎬 فيديو (MP4)", callback_data=f"vid|{url}"),
-            InlineKeyboardButton("🎵 صوت (MP3)", callback_data=f"aud|{url}")
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("اختر الصيغة التي تريد تحميلها:", reply_markup=reply_markup)
-
-async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+        ydl.download([url])
     
-    data, url = query.data.split("|")
-    mode = 'video' if data == 'vid' else 'audio'
-    
-    status_msg = await query.edit_message_text("⏳ جاري المعالجة والتحميل... يرجى الانتظار")
-    
+    files = glob.glob(f"{DOWNLOAD_DIR}/allawi_file.*")
+    return files[0] if files else None
+
+async def handle_msg(update, context):
+    text = update.message.text
+    if "http" in text:
+        kb = [[InlineKeyboardButton("🎬 فيديو", callback_data=f"v|{text}"), InlineKeyboardButton("🎵 صوت", callback_data=f"a|{text}")]]
+        await update.message.reply_text("اختر الصيغة المطلوبة:", reply_markup=InlineKeyboardMarkup(kb))
+
+async def callback(update, context):
+    q = update.callback_query
+    mode, url = q.data.split('|')
+    await q.answer()
+    m = await q.edit_message_text("⏳ جاري التحميل... انتظر")
     try:
-        file_path = download_media(url, mode)
-        
-        with open(file_path, 'rb') as file:
-            if mode == 'video':
-                await query.message.reply_video(video=file, caption="✅ تم تحميل الفيديو بنجاح!")
-            else:
-                await query.message.reply_audio(audio=file, caption="✅ تم تحويل الصوت بنجاح!")
-        
-        # تنظيف المجلد وحذف الملف بعد الإرسال
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        await status_msg.delete()
-        
+        path = await asyncio.to_thread(download_media, url, 'video' if mode == 'v' else 'audio')
+        with open(path, 'rb') as f:
+            if mode == 'v': await context.bot.send_video(q.message.chat_id, f)
+            else: await context.bot.send_audio(q.message.chat_id, f)
+        os.remove(path)
+        await m.delete()
     except Exception as e:
-        await query.message.reply_text(f"❌ حدث خطأ أثناء المحاولة: {str(e)}")
+        await q.message.reply_text(f"❌ حدث خطأ: {str(e)}")
 
-def main():
-    # التأكد من وجود مجلد التحميلات
-    if not os.path.exists('downloads'):
-        os.makedirs('downloads')
-
-    if not TOKEN:
-        print("Error: BOT_TOKEN variable is not set!")
-        return
-
+if __name__ == '__main__':
     app = Application.builder().token(TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(CallbackQueryHandler(button_click))
-
-    print("🚀 البوت يعمل الآن...")
+    app.add_handler(CommandHandler("start", lambda u, c: u.message.reply_text("أرسل الرابط الآن!")))
+    app.add_handler(CallbackQueryHandler(callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_msg))
     app.run_polling()
-
-if __name__ == "__main__":
-    main()
