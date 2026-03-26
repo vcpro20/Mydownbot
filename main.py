@@ -3,14 +3,14 @@ from fake_useragent import UserAgent
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
 
-# تأمين مسارات المعالجة لضمان تحويل الصوت دون أخطاء
+# تأمين مسارات المعالجة لضمان تحويل الصوت
 static_ffmpeg.add_paths()
 ua = UserAgent()
 
 TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = 8086158965 
+ADMIN_ID =  8086158965
 
-# --- إدارة البيانات (المستخدمين والروابط) ---
+# --- إدارة البيانات ---
 def init_db():
     conn = sqlite3.connect('bot_pro.db')
     c = conn.cursor()
@@ -41,7 +41,7 @@ def get_link(link_id):
 
 init_db()
 
-# --- إعدادات التحميل المحسنة لفيسبوك ---
+# --- إعدادات التحميل المحسنة لفيسبوك وإنستا ---
 def get_ydl_opts(mode):
     opts = {
         'outtmpl': 'file.%(ext)s',
@@ -49,12 +49,10 @@ def get_ydl_opts(mode):
         'no_warnings': True,
         'nocheckcertificate': True,
         'user_agent': ua.random,
-        # تحسين: استخدام صيغة مرنة لفيسبوك لضمان سحب الصوت بنجاح
         'format': 'bestaudio/best' if mode == 'a' else 'bestvideo+bestaudio/best',
-        'extractor_args': {'facebook': {'force_get_url': True}},
+        'extractor_args': {'facebook': {'force_get_url': True}, 'instagram': {'check_headers': True}},
         'http_headers': {'Referer': 'https://www.facebook.com/'}
     }
-    
     if mode == 'a':
         opts['postprocessors'] = [{
             'key': 'FFmpegExtractAudio',
@@ -63,10 +61,10 @@ def get_ydl_opts(mode):
         }]
     return opts
 
-# --- أوامر الإدمن والتحكم ---
+# --- الأوامر والتعامل مع الرسائل ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     add_user(update.effective_user.id)
-    await update.message.reply_text("👋 أهلاً بك! تم تحديث نظام تحويل صوت فيسبوك.\nأرسل الرابط الآن.")
+    await update.message.reply_text("👋 أهلاً بك! تم تصحيح الكود وتحديث النظام.\nأرسل الرابط الآن.")
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID: return
@@ -77,21 +75,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     add_user(user_id)
     
-    # ميزة الإذاعة العامة
+    # تصحيح ميزة الإذاعة العامة
     if user_id == ADMIN_ID and context.user_data.get('waiting_broadcast'):
         conn = sqlite3.connect('bot_pro.db')
         users = [row[0] for row in conn.execute("SELECT user_id FROM users").fetchall()]
         conn.close()
         for uid in users:
-            try: await context.bot.copy_message(chat_id=uid, from_chat_id=ADMIN_ID, message_id=update.message.message_id)
-            except: pass
+            try:
+                await context.bot.copy_message(chat_id=uid, from_chat_id=ADMIN_ID, message_id=update.message.message_id)
+            except:
+                continue
         context.user_data['waiting_broadcast'] = False
         await update.message.reply_text("✅ تم إرسال الإذاعة للجميع.")
         return
 
     url = update.message.text
-    if "http" in url:
-        link_id = save_link(url) # حل مشكلة الروابط الطويلة
+    if url and "http" in url:
+        link_id = save_link(url)
         keyboard = [[
             InlineKeyboardButton("🎬 فيديو", callback_data=f"v|{link_id}"),
             InlineKeyboardButton("🎵 صوت MP3", callback_data=f"a|{link_id}")
@@ -109,19 +109,38 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     mode, link_id = query.data.split("|")
     url = get_link(link_id)
-    status_msg = await query.edit_message_text("⏳ جاري المعالجة والتحويل...")
+    if not url:
+        await query.message.reply_text("⚠️ الرابط منتهي، أرسله مجدداً.")
+        return
+
+    status_msg = await query.edit_message_text("⏳ جاري التحميل والمعالجة...")
 
     try:
+        loop = asyncio.get_event_loop()
         with yt_dlp.YoutubeDL(get_ydl_opts(mode)) as ydl:
-            # استخدام المعالج لضمان عدم حدوث كراش
-            info = await asyncio.get_event_loop().run_in_executor(None, lambda: ydl.extract_info(url, download=True))
+            info = await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=True))
             filename = ydl.prepare_filename(info)
             if mode == 'a': filename = filename.rsplit('.', 1)[0] + ".mp3"
 
-        with open(filename, 'rb') as f:
-            if mode == 'v': await context.bot.send_video(chat_id=update.effective_chat.id, video=f)
-            else: await context.bot.send_audio(chat_id=update.effective_chat.id, audio=f, caption="✅ تم تحويل صوت فيسبوك بنجاح.")
-        
-        os.remove(filename)
-        await
-        
+        if os.path.exists(filename):
+            with open(filename, 'rb') as f:
+                if mode == 'v':
+                    await context.bot.send_video(chat_id=update.effective_chat.id, video=f)
+                else:
+                    await context.bot.send_audio(chat_id=update.effective_chat.id, audio=f)
+            os.remove(filename)
+            await status_msg.delete()
+        else:
+            await query.message.reply_text("❌ لم يتم العثور على الملف.")
+    except Exception as e:
+        print(f"Error: {e}")
+        await query.message.reply_text("⚠️ فشل التحميل. تأكد أن الرابط عام.")
+
+if __name__ == '__main__':
+    application = Application.builder().token(TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("admin", admin_panel))
+    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
+    application.add_handler(CallbackQueryHandler(button_handler))
+    application.run_polling(drop_pending_updates=True)
+    
