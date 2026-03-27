@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 static_ffmpeg.add_paths()
 ua = UserAgent()
 
-TOKEN = os.getenv("BOT_TOKEN") or "8336468616:AAH14XW8LAPfmrne5SX2P7IKGL19s_honJc" 
+TOKEN = os.getenv("BOT_TOKEN") or "" 
 ADMIN_ID = 8086158965
 
 # --- قاعدة البيانات ---
